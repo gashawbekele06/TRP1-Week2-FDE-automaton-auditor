@@ -7,58 +7,55 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
+
 from src.state import AgentState
-from src.nodes.detectives import repo_investigator, doc_analyst, vision_inspector
+from src.nodes.setup import setup_node
+from src.nodes.repo_investigator import repo_investigator_node
+from src.nodes.doc_analyst import doc_analyst_node
+from src.nodes.aggregator import evidence_aggregator
 
+def fan_out_detectives(state: AgentState):
+    """Fan-out to detective nodes."""
+    return [
+        Send("repo_investigator", state),
+        Send("doc_analyst", state),
+    ]
 
-def evidence_aggregator(state: AgentState):
-    """Synchronization node (Fan-In) collecting all evidence."""
-    print("\n--- EVIDENCE AGGREGATED ---")
-    evidences = state.get("evidences", {})
-    for dim, ev_list in evidences.items():
-        print(f"Dimension: {dim} - Found {len(ev_list)} evidence items.")
-        for ev in ev_list:
-             print(f"  - [{ev.found}] {ev.goal}: {ev.rationale}")
-    return {"evidences": evidences}
-
-
-def build_interim_graph() -> StateGraph:
-    """Constructs the Interim Deep LangGraph Swarm architecture (Detectives Only)."""
+def build_graph() -> StateGraph:
+    """Constructs the research graph."""
     workflow = StateGraph(AgentState)
 
-    # Layer 1: The Detective Layer
-    workflow.add_node("RepoInvestigator", repo_investigator)
-    workflow.add_node("DocAnalyst", doc_analyst)
-    workflow.add_node("VisionInspector", vision_inspector)
+    workflow.add_node("setup", setup_node)
+    workflow.add_node("repo_investigator", repo_investigator_node)
+    workflow.add_node("doc_analyst", doc_analyst_node)
+    workflow.add_node("aggregator", evidence_aggregator)
 
-    # Layer 2: Aggregation
-    workflow.add_node("EvidenceAggregator", evidence_aggregator)
-
-    # Fan-Out to Detectives
-    workflow.add_edge(START, "RepoInvestigator")
-    workflow.add_edge(START, "DocAnalyst")
-    workflow.add_edge(START, "VisionInspector")
-
-    # Fan-In to Evidence Aggregator
-    workflow.add_edge("RepoInvestigator", "EvidenceAggregator")
-    workflow.add_edge("DocAnalyst", "EvidenceAggregator")
-    workflow.add_edge("VisionInspector", "EvidenceAggregator")
-
-    # Judges not required yet per Interim Submission instructions
-    workflow.add_edge("EvidenceAggregator", END)
+    workflow.add_edge(START, "setup")
+    workflow.add_conditional_edges("setup", fan_out_detectives)
+    
+    # In LangGraph, fan-in from multiple Send calls is handled by the common aggregator node
+    # Since we used Send(), we don't need a direct list edge from individual nodes to aggregator
+    # if those nodes weren't added as standard nodes. 
+    # BUT here they ARE standard nodes in add_node.
+    # If they are standard nodes, we use normal edges.
+    
+    workflow.add_edge("repo_investigator", "aggregator")
+    workflow.add_edge("doc_analyst", "aggregator")
+    workflow.add_edge("aggregator", END)
 
     return workflow.compile()
-
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
     load_dotenv()
 
-    parser = argparse.ArgumentParser(description="Run the Interim Automaton Auditor Swarm.")
-    parser.add_argument("--repo", type=str, required=True, help="GitHub repository URL to evaluate")
-    parser.add_argument("--pdf", type=str, required=True, help="Path to the PDF architectural report")
+    parser = argparse.ArgumentParser(description="Run the Automaton Auditor Swarm.")
+    parser.add_argument("--repo", type=str, required=True, help="GitHub repository URL")
+    parser.add_argument("--pdf", type=str, required=True, help="Path to the PDF report")
     args = parser.parse_args()
 
+    # Load initial data if needed (setup_node handles it too, but we can pass it)
     with open("rubric.json", "r", encoding="utf-8") as f:
          rubric_data = json.load(f)
 
@@ -66,14 +63,12 @@ if __name__ == "__main__":
         "repo_url": args.repo,
         "pdf_path": args.pdf,
         "rubric_dimensions": rubric_data["dimensions"],
-        "synthesis_rules": rubric_data.get("synthesis_rules", {}),
         "evidences": {},
         "opinions": []
     }
 
-    print(f"Starting Interim Automaton Auditor for {args.repo}...")
-    app = build_interim_graph()
+    print(f"Starting Automaton Auditor for {args.repo}...")
+    app = build_graph()
 
     final_output = app.invoke(initial_state)
-    print("\n--- INTERIM EXECUTION COMPLETE ---")
-    print("Collected Evidence Keys:", list(final_output.get("evidences", {}).keys()))
+    print("\n--- EXECUTION COMPLETE ---")
