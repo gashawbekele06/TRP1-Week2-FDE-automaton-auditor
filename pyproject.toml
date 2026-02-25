@@ -5,8 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 
-[tool.setuptools.packages.find]
-where = ["."]
 dependencies = [
     "docling>=2.74.0",
     "langchain-openai>=1.1.10",
@@ -16,4 +14,9 @@ dependencies = [
     "pytest>=9.0.2",
     "python-dotenv>=1.2.1",
     "weasyprint>=68.1",
+    "pypdf>=5.0.0",
+    "pillow>=10.0",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
